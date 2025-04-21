@@ -1,3 +1,5 @@
+import json
+
 import pygame
 import pickle
 from os import path
@@ -17,8 +19,8 @@ screen = pygame.display.set_mode((screen_width,screen_height)) #hàm tạo cửa
 pygame.display.set_caption('NHÓM 1')# tạo chú thích cho cửa sổ
 
 # tạo font chữ
-font = pygame.font.SysFont('Bauhaus 93', 70)
-font_score = pygame.font.SysFont('Bauhaus 93', 30)
+font = pygame.font.SysFont('Poppins', 60)
+font_score = pygame.font.SysFont('Poppins', 30)
 
 # tạo màu chữ
 purple = (128, 0, 128)
@@ -31,6 +33,10 @@ main_menu = True
 level = 1
 max_levels = 6
 score = 0
+name=''
+input_active= False
+highScore={}
+name_entered=False
 
 #tải ảnh
 bg_img = pygame.image.load('img/bg.png')
@@ -38,6 +44,8 @@ restart_img = pygame.image.load('img/restart_btn.png')
 start_img = pygame.image.load('img/start_btn.png')
 exit_img = pygame.image.load('img/exit_btn.png')
 coin_img = pygame.image.load('img/coinGold.png')
+input_img = pygame.image.load('img/input.jpg')
+ranking_img = pygame.image.load('img/ranking.jpg')
 coin_img = pygame.transform.scale(coin_img , (20,20))
 
 # tải âm thanh
@@ -112,7 +120,7 @@ class Player():
         if game_over == 0:
             # nhấn phím
             key = pygame.key.get_pressed() # hàm kiểm tra phím nào đang được nhấn
-            if key[pygame.K_SPACE] and self.jumped == False and self.in_air == False:
+            if key[pygame.K_SPACE] and self.jumped == False and self.in_air==False:
                 jump_fx.play()
                 self.vel_y = -14
                 self.jumped = True
@@ -359,8 +367,29 @@ class Exit(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
-player= Player(80,screen_height -100)
 
+def rank_(name,score):
+    if score > highScore[name]:
+        highScore[name] = score
+        with open("ranking.json", "w") as f:
+            json.dump(highScore, f, indent=4)
+    draw_text('RANKING', font, blue, (screen_width // 2) - 100, 20)
+    screen.blit(ranking_img, (200, 100))
+    draw_text('NAME', font_score, purple, 300, 110)
+    draw_text('SCORE', font_score, purple, 500, 110)
+    # Sắp xếp danh sách điểm theo score giảm dần
+    sorted_scores = sorted(highScore.items(), key=lambda x: x[1], reverse=True)
+    # In top 5
+    for i in range(min(5, len(sorted_scores))):
+        n, s = sorted_scores[i]
+        draw_text('#' + str(i + 1), font_score, purple, 230, 150 + i * 40)
+        draw_text(n, font_score, purple, 300, 150 + i * 40)
+        draw_text(str(s), font_score, purple, 500, 150 + i * 40)
+    draw_text(f'PLAYER: {name}', font_score, purple, 300, 450)
+    draw_text(f'SCORE: {score}', font_score, purple, 300, 500)
+    draw_text(f'HIGHSCORE: {highScore[name]}', font_score, purple, 300, 550)
+
+player= Player(80,screen_height -100)
 #  tạo một nhóm (group) sprite
 blob_group = pygame.sprite.Group()
 platform_group = pygame.sprite.Group()
@@ -377,19 +406,40 @@ if path.exists(f'level{level}_data'):
 world = World(world_data)
 
 #tạo nút
-restart_button = Button(screen_width // 2 - 100, screen_height // 2 + 100, restart_img)
+restart_button = Button(screen_width // 2 - 100, screen_height // 2 + 200, restart_img)
 start_button = Button(screen_width // 2 -100 , screen_height // 2, start_img)
 exit_button = Button(screen_width // 2 -100, screen_height // 2+200, exit_img)
+input_button = Button(screen_width // 2 -100, screen_height // 2-100, input_img)
 
 run = True
 while run:
     clock.tick(fps)
     screen.blit(bg_img, (0,0)) # hiển thị lên màn hình với tọa độ 0,0
+    for event in pygame.event.get():# hàm thu thập sự kiện
+        if event.type == pygame.QUIT:# thoát game khi ấn X
+            run = False
+        if input_active:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    with open("ranking.json", "r") as f:
+                        highScore = json.load(f)
+                    if name not in highScore:
+                        highScore[name]=0
+                    name_entered =True # đã nhập tên
+                    input_active = False  # Tắt chế độ nhập
+                elif event.key == pygame.K_BACKSPACE:
+                    name = name[:-1]
+                elif len(name) < 8:
+                    name += event.unicode
     if main_menu == True:
         if exit_button.draw():
             run = False
-        if start_button.draw():
+        if start_button.draw() and name_entered==True:
             main_menu = False
+        if input_button.draw():
+            input_active = True
+        draw_text('NICKNAME',font_score, purple,340,270)
+        draw_text(name, font_score, purple, 350, 310)
     else:
         world.draw()
         blob_group.draw(screen)
@@ -409,13 +459,14 @@ while run:
             if pygame.sprite.spritecollide(player,coin_group,True):
                 score += 1
                 coin_fx.play()
-            draw_text('X ' + str(score), font_score, purple, tile_size , 5)
-
+            draw_text('X ' + str(score), font_score, purple, tile_size-5 , 12)
+            draw_text('HIGHSCORE: ' + str(highScore[name]), font_score, purple,screen_width-170, 12)
         # nếu thua
         if game_over == -1 and player.death_y < 200:
-            draw_text('GAME OVER!', font, blue, (screen_width // 2) - 180, screen_height // 2)
+            draw_text('GAME OVER!', font, blue, 300, 400)
         elif game_over == -1 and player.death_y >= 200:
             screen.blit(bg_img, (0, 0))
+            rank_(name, score)
             if restart_button.draw():
                 level = 1
                 world_data = []
@@ -433,18 +484,14 @@ while run:
                 game_over = 0
             else:# nếu hoàn thành trò chơi
                 screen.blit(bg_img, (0, 0))
-                draw_text('YOU WIN', font, blue, (screen_width // 2) - 130, screen_height // 2)
+                rank_(name,score)
+                draw_text('YOU WIN', font, blue, 300, 380)
                 if restart_button.draw(): # nếu nhấn nút khới động lại
                     level = 1
                     world_data = []
                     world = reset_level(level)
                     game_over = 0
                     score = 0
-
-
-    for event in pygame.event.get():# hàm thu thập sự kiện
-        if event.type == pygame.QUIT:# thoát game khi ấn X
-            run = False
 
     pygame.display.update()# cập nhật nội dung lên màn hình
 
